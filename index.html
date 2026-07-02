@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>就活手帳</title>
+<meta name="description" content="応募企業・準備・自己分析をひとつにまとめる、就活管理アプリ">
+<meta name="theme-color" content="#1D2A44">
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="就活手帳">
+<meta name="mobile-web-app-capable" content="yes">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Zen+Old+Mincho:wght@600&display=swap" rel="stylesheet">
+
+<!-- 自動同期（Firebase）。設定手順は README.md 参照 -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  :root{
+    --paper:#F7F6F0;
+    --grid:#E6E2D4;
+    --navy:#1D2A44;
+    --navy-2:#2E3F63;
+    --ink:#262420;
+    --muted:#7A756A;
+    --border:#D9D4C4;
+    --card:#FFFFFF;
+    --stamp:#B23A2E;
+    --stamp-soft:#F1DCD8;
+    --gold:#AD8A3E;
+    --offer:#3D6B4F;
+    --offer-soft:#DCE7DF;
+    --reject:#948E80;
+  }
+  *{box-sizing:border-box;}
+  #shukatsu-root{
+    font-family:'Zen Kaku Gothic New', sans-serif;
+    color:var(--ink);
+    background:
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0/100% 28px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0/28px 100%,
+      var(--paper);
+    min-height:100%;
+    padding:calc(44px + env(safe-area-inset-top, 0px)) 20px 60px;
+    font-size:14px;
+    line-height:1.6;
+  }
+  #shukatsu-root *{box-sizing:border-box;}
+  .st-wrap{max-width:1080px;margin:0 auto;}
+
+  /* header */
+  .st-header{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    gap:16px;flex-wrap:wrap;
+    border-bottom:3px double var(--navy);
+    padding-bottom:14px;margin-bottom:20px;
+  }
+  .st-title-block{display:flex;align-items:center;gap:14px;}
+  .st-seal{
+    width:52px;height:52px;border-radius:50%;
+    border:2.5px solid var(--stamp);color:var(--stamp);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Shippori Mincho',serif;font-weight:800;font-size:19px;
+    transform:rotate(-6deg);
+    flex-shrink:0;
+    box-shadow:0 0 0 1px rgba(178,58,46,0.15) inset;
+  }
+  .st-title{
+    font-family:'Zen Old Mincho',serif;font-weight:600;
+    font-size:26px;color:var(--navy);letter-spacing:.03em;
+  }
+  .st-subtitle{color:var(--muted);font-size:12px;margin-top:2px;letter-spacing:.02em;}
+  .st-stats{display:flex;gap:10px;flex-wrap:wrap;}
+  .st-stat{
+    background:var(--card);border:1px solid var(--border);
+    padding:8px 14px;min-width:78px;text-align:center;
+    border-radius:2px;
+  }
+  .st-stat-num{font-family:'Zen Old Mincho',serif;font-size:20px;color:var(--navy);font-weight:600;}
+  .st-stat-label{font-size:10.5px;color:var(--muted);margin-top:1px;letter-spacing:.03em;}
+
+  /* sync bar */
+  .st-sync-bar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    margin:14px 0 18px;
+  }
+  .st-sync-note{font-size:11.5px;color:var(--muted);}
+  .st-sync-status{font-size:12px;color:var(--muted);}
+  .st-sync-dot{
+    width:9px;height:9px;border-radius:50%;background:var(--reject);flex-shrink:0;
+  }
+  .st-sync-dot.on{background:var(--offer);}
+  .st-sync-dot.error{background:var(--stamp);}
+
+  .st-sync-overlay{
+    display:none;position:fixed;inset:0;background:rgba(29,42,68,0.45);
+    align-items:center;justify-content:center;z-index:200;padding:20px;
+  }
+  .st-sync-overlay.open{display:flex;}
+  .st-sync-modal{
+    background:var(--card);border-radius:4px;max-width:440px;width:100%;
+    padding:22px 22px 18px;box-shadow:0 8px 30px rgba(0,0,0,0.2);
+  }
+  .st-sync-modal h3{
+    font-family:'Zen Old Mincho',serif;color:var(--navy);font-size:17px;margin:0 0 10px;
+  }
+  .st-sync-desc{font-size:12.5px;color:var(--muted);line-height:1.7;margin-bottom:16px;}
+  .st-sync-code-display label,.st-sync-join label{
+    font-size:11.5px;color:var(--muted);display:block;margin-bottom:5px;
+  }
+  .st-sync-code-row{display:flex;gap:8px;align-items:center;}
+  .st-sync-code-row code{
+    flex:1;background:#F1EFE6;border:1px solid var(--border);border-radius:2px;
+    padding:8px 10px;font-size:13px;letter-spacing:.04em;word-break:break-all;
+  }
+  .st-sync-code-row input{
+    flex:1;border:1px solid var(--border);border-radius:2px;padding:8px 10px;font-size:13px;
+    font-family:inherit;
+  }
+  .st-sync-actions{margin:14px 0;}
+  .st-sync-divider{
+    text-align:center;color:var(--muted);font-size:11px;margin:14px 0;
+    position:relative;
+  }
+  .st-sync-divider::before,.st-sync-divider::after{
+    content:'';position:absolute;top:50%;width:38%;height:1px;background:var(--border);
+  }
+  .st-sync-divider::before{left:0;}
+  .st-sync-divider::after{right:0;}
+  .st-sync-join{margin-bottom:6px;}
+  .st-sync-warn{font-size:11.5px;color:var(--stamp);min-height:16px;margin:8px 0 0;}
+
+  /* tabs */
+  .st-tabs{display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border);}
+  .st-tab{
+    font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;
+    padding:10px 18px;cursor:pointer;color:var(--muted);
+    border:1px solid transparent;border-bottom:none;
+    font-size:13.5px;letter-spacing:.03em;
+    background:transparent;
+    position:relative;top:1px;
+  }
+  .st-tab.active{
+    color:var(--navy);background:var(--card);
+    border-color:var(--border);
+    border-radius:3px 3px 0 0;
+  }
+  .st-tab .st-tab-num{
+    font-family:'Zen Old Mincho',serif;color:var(--gold);margin-right:5px;font-size:12px;
+  }
+
+  .st-panel{display:none;}
+  .st-panel.active{display:block;}
+
+  /* buttons */
+  .st-btn{
+    font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;
+    background:var(--navy);color:#fff;border:none;
+    padding:9px 16px;border-radius:2px;cursor:pointer;font-size:13px;
+    letter-spacing:.03em;
+    transition:background .15s;
+  }
+  .st-btn:hover{background:var(--navy-2);}
+  .st-btn.st-btn-ghost{
+    background:transparent;color:var(--navy);border:1px solid var(--navy);
+  }
+  .st-btn.st-btn-ghost:hover{background:rgba(29,42,68,0.06);}
+  .st-btn.st-btn-danger{background:transparent;color:var(--stamp);border:1px solid var(--stamp);}
+  .st-btn.st-btn-danger:hover{background:var(--stamp-soft);}
+  .st-btn-sm{padding:5px 10px;font-size:11.5px;}
+
+  /* Kanban */
+  .st-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:10px;}
+  .st-col{
+    background:rgba(255,255,255,0.55);
+    border:1px solid var(--border);
+    border-radius:3px;
+    min-width:190px;flex:1 0 190px;
+    padding:10px;
+  }
+  .st-col-head{
+    font-weight:700;font-size:12.5px;color:var(--navy);
+    display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:8px;padding-bottom:6px;border-bottom:1px dashed var(--border);
+  }
+  .st-col-count{color:var(--muted);font-weight:400;font-size:11px;}
+  .st-card{
+    background:var(--card);border:1px solid var(--border);
+    border-radius:2px;padding:9px 10px;margin-bottom:8px;
+    cursor:pointer;box-shadow:1px 2px 0 rgba(29,42,68,0.04);
+    position:relative;
+  }
+  .st-card:hover{border-color:var(--navy-2);}
+  .st-card-name{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:2px;}
+  .st-card-industry{font-size:11px;color:var(--muted);}
+  .st-card-deadline{
+    font-family:monospace;font-size:11px;margin-top:6px;
+    display:inline-block;padding:1px 6px;border-radius:2px;
+  }
+  .st-card-deadline.soon{background:var(--stamp-soft);color:var(--stamp);font-weight:700;}
+  .st-card-deadline.normal{background:#EEEBE0;color:var(--muted);}
+  .st-card.offer{border-color:var(--offer);}
+  .st-card.offer::after{
+    content:'内定';position:absolute;top:6px;right:6px;
+    color:var(--offer);border:1.5px solid var(--offer);border-radius:50%;
+    width:30px;height:30px;display:flex;align-items:center;justify-content:center;
+    font-size:10px;font-weight:800;transform:rotate(-10deg);
+    font-family:'Shippori Mincho',serif;
+  }
+  .st-empty-col{color:var(--muted);font-size:11px;text-align:center;padding:14px 4px;}
+
+  .st-archive{margin-top:18px;}
+  .st-archive-toggle{
+    font-size:12px;color:var(--muted);cursor:pointer;text-decoration:underline;
+    background:none;border:none;padding:0;font-family:inherit;
+  }
+  .st-archive-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .st-archive-card{
+    background:#EFEDE6;border:1px solid var(--border);border-radius:2px;
+    padding:7px 10px;font-size:12px;color:var(--reject);
+    display:flex;align-items:center;gap:8px;cursor:pointer;
+  }
+  .st-archive-card .st-stamp-mini{
+    border:1.3px solid var(--reject);border-radius:50%;width:22px;height:22px;
+    display:flex;align-items:center;justify-content:center;font-size:9px;
+    transform:rotate(-8deg);font-family:'Shippori Mincho',serif;
+  }
+
+  /* Task list */
+  .st-task-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+  .st-task-group{margin-bottom:18px;}
+  .st-task-group-label{
+    font-family:'Zen Old Mincho',serif;color:var(--navy);font-size:13.5px;
+    margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border);
+  }
+  .st-task-row{
+    display:flex;align-items:center;gap:10px;
+    background:var(--card);border:1px solid var(--border);border-radius:2px;
+    padding:9px 12px;margin-bottom:6px;
+  }
+  .st-task-row.done{opacity:.55;}
+  .st-task-check{
+    width:26px;height:26px;border-radius:50%;border:2px solid var(--stamp);
+    flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    color:transparent;font-size:13px;transition:.12s;
+  }
+  .st-task-check.checked{background:var(--stamp);color:#fff;transform:rotate(-8deg);}
+  .st-task-body{flex:1;min-width:0;}
+  .st-task-title{font-weight:700;font-size:13px;}
+  .st-task-title.done{text-decoration:line-through;}
+  .st-task-meta{font-size:11px;color:var(--muted);margin-top:2px;}
+  .st-task-type-badge{
+    font-size:10px;padding:1px 6px;border-radius:10px;border:1px solid var(--navy-2);
+    color:var(--navy-2);margin-right:6px;
+  }
+  .st-task-deadline{font-family:monospace;font-size:11.5px;color:var(--stamp);font-weight:700;white-space:nowrap;}
+  .st-task-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;}
+  .st-task-del:hover{color:var(--stamp);}
+
+  /* Self analysis */
+  .st-self-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media (max-width:720px){.st-self-grid{grid-template-columns:1fr;}}
+  @media (max-width:480px){
+    #shukatsu-root{padding-top:calc(100px + env(safe-area-inset-top, 0px));}
+  }
+  .st-self-block{background:var(--card);border:1px solid var(--border);border-radius:3px;padding:14px;}
+  .st-self-label{
+    font-family:'Zen Old Mincho',serif;color:var(--navy);font-size:13.5px;
+    margin-bottom:6px;display:flex;align-items:center;gap:6px;
+  }
+  .st-self-label .st-idx{
+    font-size:10px;color:var(--gold);border:1px solid var(--gold);border-radius:50%;
+    width:18px;height:18px;display:flex;align-items:center;justify-content:center;
+  }
+  .st-self-hint{font-size:11px;color:var(--muted);margin-bottom:8px;}
+  .st-self-textarea{
+    width:100%;min-height:110px;resize:vertical;border:1px solid var(--border);
+    border-radius:2px;padding:9px 10px;font-family:'Zen Kaku Gothic New',sans-serif;
+    font-size:13px;color:var(--ink);background:#FFFFFF;line-height:1.7;
+  }
+  .st-self-textarea:focus{outline:none;border-color:var(--navy-2);}
+  .st-save-indicator{font-size:11px;color:var(--offer);margin-top:6px;height:14px;opacity:0;transition:opacity .3s;}
+  .st-save-indicator.show{opacity:1;}
+
+  /* Modal */
+  .st-overlay{
+    position:fixed;inset:0;background:rgba(29,42,68,0.35);
+    display:none;align-items:center;justify-content:center;z-index:1000;padding:16px;
+  }
+  .st-overlay.open{display:flex;}
+  .st-modal{
+    background:var(--paper);border:1px solid var(--border);border-radius:4px;
+    width:100%;max-width:440px;max-height:88vh;overflow-y:auto;
+    padding:22px;box-shadow:0 8px 30px rgba(0,0,0,0.18);
+  }
+  .st-modal-title{font-family:'Zen Old Mincho',serif;font-size:17px;color:var(--navy);margin-bottom:14px;}
+  .st-field{margin-bottom:12px;}
+  .st-field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:4px;font-weight:700;}
+  .st-field input[type=text], .st-field input[type=date], .st-field select, .st-field textarea{
+    width:100%;border:1px solid var(--border);border-radius:2px;padding:7px 9px;
+    font-family:'Zen Kaku Gothic New',sans-serif;font-size:13px;background:#fff;color:var(--ink);
+  }
+  .st-field textarea{min-height:60px;resize:vertical;}
+  .st-modal-actions{display:flex;justify-content:space-between;gap:10px;margin-top:16px;}
+  .st-modal-actions-right{display:flex;gap:8px;}
+  .st-stage-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+  .st-stage-chip{
+    font-size:11px;padding:4px 9px;border:1px solid var(--border);border-radius:12px;
+    cursor:pointer;color:var(--muted);background:#fff;
+  }
+  .st-stage-chip.active{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .st-status-row{display:flex;gap:6px;margin-top:8px;}
+  .st-status-chip{
+    flex:1;text-align:center;font-size:12px;padding:6px;border-radius:2px;cursor:pointer;
+    border:1px solid var(--border);color:var(--muted);
+  }
+  .st-status-chip.active.offer{background:var(--offer-soft);border-color:var(--offer);color:var(--offer);font-weight:700;}
+  .st-status-chip.active.reject{background:#EFEDE6;border-color:var(--reject);color:var(--reject);font-weight:700;}
+  .st-status-chip.active.inprogress{background:#E7EBF1;border-color:var(--navy-2);color:var(--navy-2);font-weight:700;}
+
+  .st-fit-chip{
+    flex:1;text-align:center;font-family:'Zen Old Mincho',serif;font-weight:700;font-size:15px;
+    padding:7px 0;border-radius:2px;cursor:pointer;border:1px solid var(--border);color:var(--muted);
+  }
+  .st-fit-chip.active.fit-a{background:var(--offer-soft);border-color:var(--offer);color:var(--offer);}
+  .st-fit-chip.active.fit-b{background:#F3EAD2;border-color:var(--gold);color:var(--gold);}
+  .st-fit-chip.active.fit-c{background:var(--stamp-soft);border-color:var(--stamp);color:var(--stamp);}
+  .st-fit-chip.active.fit-none{background:#EFEDE6;border-color:var(--reject);color:var(--reject);}
+  .st-card-fit-badge{
+    position:absolute;top:6px;left:6px;
+    width:26px;height:26px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Zen Old Mincho',serif;font-weight:800;font-size:13px;
+    border:1.5px solid; transform:rotate(8deg);
+  }
+  .st-card-fit-badge.fit-a{color:var(--offer);border-color:var(--offer);}
+  .st-card-fit-badge.fit-b{color:var(--gold);border-color:var(--gold);}
+  .st-card-fit-badge.fit-c{color:var(--stamp);border-color:var(--stamp);}
+
+  .st-fit-section{margin-top:22px;}
+  .st-fit-section-title{
+    font-family:'Zen Old Mincho',serif;color:var(--navy);font-size:14px;
+    margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid var(--border);
+  }
+  .st-fit-table{display:flex;flex-direction:column;gap:8px;}
+  .st-fit-row{
+    display:grid;grid-template-columns:34px 150px 1fr;gap:12px;align-items:start;
+    background:var(--card);border:1px solid var(--border);border-radius:2px;padding:10px 12px;
+  }
+  @media (max-width:640px){.st-fit-row{grid-template-columns:34px 1fr;}}
+  .st-fit-grade{
+    width:32px;height:32px;border-radius:50%;border:1.6px solid;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Zen Old Mincho',serif;font-weight:800;font-size:15px;
+  }
+  .st-fit-grade.fit-a{color:var(--offer);border-color:var(--offer);}
+  .st-fit-grade.fit-b{color:var(--gold);border-color:var(--gold);}
+  .st-fit-grade.fit-c{color:var(--stamp);border-color:var(--stamp);}
+  .st-fit-grade.fit-none{color:var(--reject);border-color:var(--reject);font-size:10px;}
+  .st-fit-name{font-weight:700;font-size:13px;}
+  .st-fit-name-sub{font-size:10.5px;color:var(--muted);margin-top:2px;}
+  .st-fit-ideal{font-size:12px;color:var(--ink);white-space:pre-wrap;line-height:1.6;}
+  .st-fit-ideal-empty{font-size:12px;color:var(--muted);}
+  .st-fit-empty{color:var(--muted);font-size:12px;padding:8px 0;}
+
+  .st-loading{text-align:center;padding:60px 0;color:var(--muted);font-size:13px;}
+
+  .st-kind-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;}
+  .st-kind-switch{display:flex;border:1px solid var(--navy);border-radius:14px;overflow:hidden;}
+  .st-kind-chip{
+    padding:6px 16px;font-size:12.5px;font-weight:700;color:var(--navy);
+    cursor:pointer;background:#fff;letter-spacing:.02em;
+  }
+  .st-kind-chip.active{background:var(--navy);color:#fff;}
+  .st-card-kind-badge{
+    display:inline-block;font-size:9.5px;font-weight:700;color:var(--gold);
+    border:1px solid var(--gold);border-radius:9px;padding:0 6px;margin-bottom:4px;
+    letter-spacing:.02em;
+  }
+
+  /* Calendar */
+  .st-cal-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .st-cal-month-label{font-family:'Zen Old Mincho',serif;font-size:16px;color:var(--navy);letter-spacing:.03em;}
+  .st-cal-legend{display:flex;gap:16px;margin-bottom:10px;font-size:11.5px;color:var(--muted);}
+  .st-cal-legend-item{display:flex;align-items:center;gap:5px;}
+  .st-cal-dot{width:8px;height:8px;border-radius:50%;display:inline-block;}
+  .st-cal-dot.company{background:var(--stamp);}
+  .st-cal-dot.task{background:var(--navy-2);}
+  .st-cal-grid{
+    display:grid;grid-template-columns:repeat(7,1fr);
+    border:1px solid var(--border);border-radius:3px;overflow:hidden;
+    background:var(--card);
+  }
+  .st-cal-dow{
+    text-align:center;font-size:11px;font-weight:700;color:var(--muted);
+    padding:6px 0;background:#EFEDE4;border-bottom:1px solid var(--border);
+  }
+  .st-cal-dow.sun{color:var(--stamp);}
+  .st-cal-dow.sat{color:var(--navy-2);}
+  .st-cal-cell{
+    min-height:78px;border-right:1px solid var(--grid);border-bottom:1px solid var(--grid);
+    padding:5px 5px 6px;cursor:pointer;position:relative;
+  }
+  .st-cal-cell:nth-child(7n){border-right:none;}
+  .st-cal-cell.other-month{background:#FAF9F4;color:var(--muted);opacity:.5;}
+  .st-cal-cell.today{background:#F1E9DA;}
+  .st-cal-cell.selected{outline:2px solid var(--navy-2);outline-offset:-2px;}
+  .st-cal-cell:hover{background:#F3F1E8;}
+  .st-cal-daynum{font-size:11.5px;font-weight:700;}
+  .st-cal-dots{display:flex;gap:3px;flex-wrap:wrap;margin-top:4px;}
+  .st-cal-dots .st-cal-dot{width:6px;height:6px;}
+  .st-cal-day-detail{
+    margin-top:14px;background:var(--card);border:1px solid var(--border);border-radius:3px;
+    padding:12px 14px;min-height:56px;
+  }
+  .st-cal-day-detail-title{font-family:'Zen Old Mincho',serif;color:var(--navy);font-size:13.5px;margin-bottom:8px;}
+  .st-cal-day-detail-empty{color:var(--muted);font-size:12px;}
+  .st-cal-detail-row{
+    display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 0;
+    border-bottom:1px dashed var(--border);
+  }
+  .st-cal-detail-row:last-child{border-bottom:none;}
+</style>
+</head>
+<body>
+
+<div id="shukatsu-root">
+  <div class="st-wrap">
+    <div class="st-header">
+      <div class="st-title-block">
+        <div class="st-seal">就活</div>
+        <div>
+          <div class="st-title">就活手帳</div>
+          <div class="st-subtitle">応募企業・準備・自己分析をひとつにまとめる手帳</div>
+        </div>
+      </div>
+      <div class="st-stats" id="st-stats"></div>
+    </div>
+
+    <div class="st-sync-bar">
+      <span class="st-sync-dot" id="st-sync-dot"></span>
+      <span class="st-sync-status" id="st-sync-status">同期未設定</span>
+      <button class="st-btn st-btn-ghost st-btn-sm" id="st-sync-setup-btn">🔗 自動同期を設定</button>
+      <button class="st-btn st-btn-ghost st-btn-sm" id="st-export">⇩ 書き出す</button>
+      <button class="st-btn st-btn-ghost st-btn-sm" id="st-import-btn">⇧ 読み込む</button>
+      <input type="file" id="st-import-file" accept="application/json" style="display:none;">
+      <span class="st-sync-note" id="st-sync-note"></span>
+    </div>
+
+    <div class="st-sync-overlay" id="st-sync-overlay">
+      <div class="st-sync-modal">
+        <h3>自動同期の設定</h3>
+        <p class="st-sync-desc">
+          「同期コード」でこの端末とほかの端末をつなぎます。<br>
+          初めての場合は<strong>新しいコードを作成</strong>し、2台目以降の端末では
+          <strong>同じコードを入力</strong>してください。
+        </p>
+
+        <div class="st-sync-code-display">
+          <label>現在の同期コード</label>
+          <div class="st-sync-code-row">
+            <code id="st-sync-code-current">未設定</code>
+            <button class="st-btn st-btn-ghost st-btn-sm" id="st-sync-copy">コピー</button>
+          </div>
+        </div>
+
+        <div class="st-sync-actions">
+          <button class="st-btn" id="st-sync-generate">新しいコードを作成</button>
+        </div>
+
+        <div class="st-sync-divider">または</div>
+
+        <div class="st-sync-join">
+          <label>他の端末で作成したコードを入力</label>
+          <div class="st-sync-code-row">
+            <input type="text" id="st-sync-code-input" placeholder="例：a3f9k2p1" maxlength="16">
+            <button class="st-btn" id="st-sync-join-btn">連携する</button>
+          </div>
+        </div>
+
+        <p class="st-sync-warn" id="st-sync-warn"></p>
+
+        <div class="st-modal-actions">
+          <div></div>
+          <div class="st-modal-actions-right">
+            <button class="st-btn st-btn-ghost" id="st-sync-disconnect">同期を解除</button>
+            <button class="st-btn st-btn-ghost" id="st-sync-close">閉じる</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="st-tabs">
+      <button class="st-tab active" data-tab="board"><span class="st-tab-num">壱</span>企業管理</button>
+      <button class="st-tab" data-tab="tasks"><span class="st-tab-num">弐</span>ES・面接準備</button>
+      <button class="st-tab" data-tab="self"><span class="st-tab-num">参</span>自己分析</button>
+      <button class="st-tab" data-tab="calendar"><span class="st-tab-num">肆</span>カレンダー</button>
+    </div>
+
+    <div id="st-loading" class="st-loading">読み込み中…</div>
+
+    <div id="st-panels" style="display:none;">
+      <div class="st-panel active" id="panel-board">
+        <div class="st-kind-toolbar">
+          <div class="st-kind-switch" id="st-kind-switch">
+            <div class="st-kind-chip active" data-kind="honsen">本選考</div>
+            <div class="st-kind-chip" data-kind="intern">インターン</div>
+          </div>
+          <button class="st-btn" id="st-add-company">＋ 企業を追加</button>
+        </div>
+        <div class="st-board" id="st-board"></div>
+        <div class="st-archive">
+          <button class="st-archive-toggle" id="st-archive-toggle">見送り・辞退の企業を表示</button>
+          <div class="st-archive-list" id="st-archive-list" style="display:none;"></div>
+        </div>
+        <div class="st-fit-section">
+          <div class="st-fit-section-title">企業が求める人物像 × 自分との適合度</div>
+          <div class="st-fit-table" id="st-fit-table"></div>
+        </div>
+      </div>
+
+      <div class="st-panel" id="panel-tasks">
+        <div class="st-task-toolbar">
+          <div style="color:var(--muted);font-size:12px;">締切が近い順に表示されます</div>
+          <button class="st-btn" id="st-add-task">＋ タスクを追加</button>
+        </div>
+        <div id="st-task-list"></div>
+      </div>
+
+      <div class="st-panel" id="panel-self">
+        <div class="st-self-grid" id="st-self-grid"></div>
+      </div>
+
+      <div class="st-panel" id="panel-calendar">
+        <div class="st-cal-toolbar">
+          <button class="st-btn st-btn-ghost st-btn-sm" id="st-cal-prev">＜ 前月</button>
+          <div class="st-cal-month-label" id="st-cal-month-label"></div>
+          <button class="st-btn st-btn-ghost st-btn-sm" id="st-cal-next">翌月 ＞</button>
+        </div>
+        <div class="st-cal-legend">
+          <span class="st-cal-legend-item"><span class="st-cal-dot company"></span>企業の締切・予定</span>
+          <span class="st-cal-legend-item"><span class="st-cal-dot task"></span>ES・面接タスク</span>
+        </div>
+        <div class="st-cal-grid" id="st-cal-grid"></div>
+        <div class="st-cal-day-detail" id="st-cal-day-detail"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="st-overlay" id="st-company-overlay">
+  <div class="st-modal">
+    <div class="st-modal-title" id="st-company-modal-title">企業を追加</div>
+    <div class="st-field">
+      <label>企業名</label>
+      <input type="text" id="cf-name" placeholder="例：株式会社〇〇">
+    </div>
+    <div class="st-field">
+      <label>種別</label>
+      <div class="st-stage-row" id="cf-kind-row">
+        <div class="st-stage-chip" data-kind="honsen">本選考</div>
+        <div class="st-stage-chip" data-kind="intern">インターン</div>
+      </div>
+    </div>
+    <div class="st-field">
+      <label>業界・職種</label>
+      <input type="text" id="cf-industry" placeholder="例：IT・エンジニア職">
+    </div>
+    <div class="st-field">
+      <label>次の締切・予定日</label>
+      <input type="date" id="cf-deadline">
+    </div>
+    <div class="st-field">
+      <label>選考ステージ</label>
+      <div class="st-stage-row" id="cf-stage-row"></div>
+    </div>
+    <div class="st-field">
+      <label>状況</label>
+      <div class="st-status-row" id="cf-status-row">
+        <div class="st-status-chip inprogress" data-status="inprogress">選考中</div>
+        <div class="st-status-chip offer" data-status="offer">内定</div>
+        <div class="st-status-chip reject" data-status="reject">見送り・辞退</div>
+      </div>
+    </div>
+    <div class="st-field">
+      <label>企業が求める人物像</label>
+      <textarea id="cf-ideal" placeholder="募集要項やOB訪問などから分かった、求める人物像をまとめる"></textarea>
+    </div>
+    <div class="st-field">
+      <label>自分の学歴・経験との適合度（Aが最も高評価）</label>
+      <div class="st-status-row" id="cf-fit-row">
+        <div class="st-fit-chip fit-a" data-fit="A">A</div>
+        <div class="st-fit-chip fit-b" data-fit="B">B</div>
+        <div class="st-fit-chip fit-c" data-fit="C">C</div>
+        <div class="st-fit-chip fit-none" data-fit="">未評価</div>
+      </div>
+      <div class="st-self-hint" style="margin-top:6px;">あくまで自己評価の目安です。求める人物像と自分の学歴・研究内容・経験を照らし合わせて選んでください。</div>
+    </div>
+    <div class="st-field">
+      <label>メモ</label>
+      <textarea id="cf-memo" placeholder="面接の感触、次の対策など"></textarea>
+    </div>
+    <div class="st-modal-actions">
+      <button class="st-btn st-btn-danger" id="cf-delete" style="display:none;">削除</button>
+      <div class="st-modal-actions-right">
+        <button class="st-btn st-btn-ghost" id="cf-cancel">キャンセル</button>
+        <button class="st-btn" id="cf-save">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="st-overlay" id="st-task-overlay">
+  <div class="st-modal">
+    <div class="st-modal-title">タスクを追加</div>
+    <div class="st-field">
+      <label>タスク内容</label>
+      <input type="text" id="tf-title" placeholder="例：〇〇株式会社 ES提出">
+    </div>
+    <div class="st-field">
+      <label>種類</label>
+      <select id="tf-type">
+        <option value="ES">ES</option>
+        <option value="適性検査">適性検査</option>
+        <option value="面接">面接</option>
+        <option value="OB訪問">OB訪問</option>
+        <option value="その他">その他</option>
+      </select>
+    </div>
+    <div class="st-field">
+      <label>関連企業（任意）</label>
+      <select id="tf-company"></select>
+    </div>
+    <div class="st-field">
+      <label>締切</label>
+      <input type="date" id="tf-deadline">
+    </div>
+    <div class="st-field">
+      <label>メモ</label>
+      <textarea id="tf-memo" placeholder="準備すること、持ち物など"></textarea>
+    </div>
+    <div class="st-modal-actions">
+      <div></div>
+      <div class="st-modal-actions-right">
+        <button class="st-btn st-btn-ghost" id="tf-cancel">キャンセル</button>
+        <button class="st-btn" id="tf-save">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const STAGE_SETS = {
+    honsen: ['エントリー','ES提出','適性検査','一次面接','二次面接','最終面接','内定'],
+    intern: ['エントリー','ES提出','適性検査','面接','参加確定']
+  };
+  const KIND_LABEL = { honsen:'本選考', intern:'インターン' };
+  function stagesFor(kind){ return STAGE_SETS[kind] || STAGE_SETS.honsen; }
+  // Backward-compat alias used by calendar/task rendering (labels for honsen flow)
+  const STAGES = STAGE_SETS.honsen;
+  const STORAGE_KEY = 'shukatsu-data-v1';
+  let data = { companies: [], tasks: [], self: { pr:'', strengths:'', weaknesses:'', gakuchika:'', motivation:'' } };
+  let editingCompanyId = null;
+  let saveTimer = null;
+  let boardKind = 'honsen';
+
+  const root = document.getElementById('shukatsu-root');
+  const $ = (sel, ctx) => (ctx || document).querySelector(sel);
+  const $all = (sel, ctx) => Array.from((ctx || document).querySelectorAll(sel));
+
+  function uid(){ return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7); }
+
+  async function loadData(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        data = Object.assign({companies:[],tasks:[],self:{pr:'',strengths:'',weaknesses:'',gakuchika:'',motivation:''}}, parsed);
+      }
+    }catch(e){
+      console.log('初回起動、またはデータ未登録:', e);
+    }
+    document.getElementById('st-loading').style.display = 'none';
+    document.getElementById('st-panels').style.display = 'block';
+    renderAll();
+    updateSyncNote();
+  }
+
+  async function persist(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(STORAGE_KEY + '-updated', String(Date.now()));
+      updateSyncNote();
+    }catch(e){
+      console.error('保存エラー:', e);
+      alert('保存に失敗しました。端末の空き容量をご確認ください。');
+    }
+    pushToCloud();
+  }
+
+  function debouncedPersist(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(persist, 500);
+  }
+
+  function daysUntil(dateStr){
+    if(!dateStr) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const d = new Date(dateStr + 'T00:00:00');
+    return Math.round((d - today) / 86400000);
+  }
+
+  function fmtDeadline(dateStr){
+    if(!dateStr) return '';
+    const du = daysUntil(dateStr);
+    let suffix = '';
+    if(du !== null){
+      if(du < 0) suffix = '（期限超過）';
+      else if(du === 0) suffix = '（本日）';
+      else suffix = '（あと' + du + '日）';
+    }
+    return dateStr + suffix;
+  }
+
+  function renderStats(){
+    const companies = data.companies;
+    const honsenCompanies = companies.filter(c => (c.kind||'honsen') === 'honsen');
+    const internCompanies = companies.filter(c => c.kind === 'intern');
+    const active = honsenCompanies.filter(c => c.status === 'inprogress').length;
+    const offers = honsenCompanies.filter(c => c.status === 'offer').length;
+    const openTasks = data.tasks.filter(t => !t.done);
+    let nextDeadline = '－';
+    const withDeadline = openTasks.filter(t => t.deadline).sort((a,b)=> a.deadline.localeCompare(b.deadline));
+    if(withDeadline.length){
+      const du = daysUntil(withDeadline[0].deadline);
+      nextDeadline = du < 0 ? '超過' : (du === 0 ? '本日' : du + '日後');
+    }
+    const stats = [
+      {num: honsenCompanies.length, label:'応募企業数'},
+      {num: active, label:'選考中'},
+      {num: offers, label:'内定'},
+      {num: internCompanies.length, label:'インターン'},
+      {num: nextDeadline, label:'次の締切'}
+    ];
+    document.getElementById('st-stats').innerHTML = stats.map(s =>
+      `<div class="st-stat"><div class="st-stat-num">${s.num}</div><div class="st-stat-label">${s.label}</div></div>`
+    ).join('');
+  }
+
+  function renderBoard(){
+    const board = document.getElementById('st-board');
+    const stages = stagesFor(boardKind);
+    const activeCompanies = data.companies.filter(c => c.status !== 'reject' && (c.kind||'honsen') === boardKind);
+    let html = '';
+    stages.forEach((stageName, idx) => {
+      const inStage = activeCompanies.filter(c => c.stage === idx);
+      html += `<div class="st-col"><div class="st-col-head"><span>${stageName}</span><span class="st-col-count">${inStage.length}</span></div>`;
+      if(inStage.length === 0){
+        html += `<div class="st-empty-col">なし</div>`;
+      } else {
+        inStage.forEach(c => {
+          const du = daysUntil(c.deadline);
+          const soonClass = (du !== null && du <= 5) ? 'soon' : 'normal';
+          const fit = c.fit;
+          html += `<div class="st-card ${c.status==='offer'?'offer':''}" data-id="${c.id}">
+            ${fit ? `<div class="st-card-fit-badge fit-${fit.toLowerCase()}">${fit}</div>` : ''}
+            <div class="st-card-name" style="${fit?'padding-left:30px;':''}">${escapeHtml(c.name)}</div>
+            <div class="st-card-industry" style="${fit?'padding-left:30px;':''}">${escapeHtml(c.industry||'')}</div>
+            ${c.deadline ? `<div class="st-card-deadline ${soonClass}">${fmtDeadline(c.deadline)}</div>` : ''}
+          </div>`;
+        });
+      }
+      html += `</div>`;
+    });
+    board.innerHTML = html;
+    $all('.st-card', board).forEach(card => {
+      card.addEventListener('click', () => openCompanyModal(card.getAttribute('data-id')));
+    });
+
+    const rejected = data.companies.filter(c => c.status === 'reject' && (c.kind||'honsen') === boardKind);
+    document.getElementById('st-archive-toggle').textContent =
+      rejected.length ? `見送り・辞退を表示（${rejected.length}件）` : '見送り・辞退はありません';
+    const archiveList = document.getElementById('st-archive-list');
+    archiveList.innerHTML = rejected.map(c =>
+      `<div class="st-archive-card" data-id="${c.id}"><div class="st-stamp-mini">見送</div>${escapeHtml(c.name)}</div>`
+    ).join('');
+    $all('.st-archive-card', archiveList).forEach(card => {
+      card.addEventListener('click', () => openCompanyModal(card.getAttribute('data-id')));
+    });
+  }
+
+  function renderTasks(){
+    const list = document.getElementById('st-task-list');
+    const companyName = id => {
+      const c = data.companies.find(c => c.id === id);
+      return c ? c.name : '';
+    };
+    const open = data.tasks.filter(t => !t.done).sort((a,b) => (a.deadline||'9999').localeCompare(b.deadline||'9999'));
+    const done = data.tasks.filter(t => t.done).sort((a,b) => (b.deadline||'').localeCompare(a.deadline||''));
+
+    function taskRow(t){
+      const linked = t.companyId ? companyName(t.companyId) : '';
+      return `<div class="st-task-row ${t.done?'done':''}" data-id="${t.id}">
+        <div class="st-task-check ${t.done?'checked':''}" data-action="toggle">${t.done?'済':''}</div>
+        <div class="st-task-body">
+          <div class="st-task-title ${t.done?'done':''}">${escapeHtml(t.title)}</div>
+          <div class="st-task-meta"><span class="st-task-type-badge">${t.type}</span>${linked ? escapeHtml(linked) : ''}${t.memo ? ' ・ ' + escapeHtml(t.memo) : ''}</div>
+        </div>
+        ${t.deadline ? `<div class="st-task-deadline">${fmtDeadline(t.deadline)}</div>` : ''}
+        <button class="st-task-del" data-action="delete">✕</button>
+      </div>`;
+    }
+
+    let html = '';
+    if(open.length === 0 && done.length === 0){
+      html = `<div class="st-empty-col" style="padding:30px 0;">まだタスクがありません。「＋ タスクを追加」から始めましょう。</div>`;
+    } else {
+      if(open.length){
+        html += `<div class="st-task-group"><div class="st-task-group-label">未完了（${open.length}）</div>`;
+        html += open.map(taskRow).join('');
+        html += `</div>`;
+      }
+      if(done.length){
+        html += `<div class="st-task-group"><div class="st-task-group-label">完了済み（${done.length}）</div>`;
+        html += done.map(taskRow).join('');
+        html += `</div>`;
+      }
+    }
+    list.innerHTML = html;
+
+    $all('.st-task-row', list).forEach(row => {
+      const id = row.getAttribute('data-id');
+      $('[data-action="toggle"]', row).addEventListener('click', () => {
+        const t = data.tasks.find(t => t.id === id);
+        t.done = !t.done;
+        renderAll(); debouncedPersist();
+      });
+      $('[data-action="delete"]', row).addEventListener('click', () => {
+        data.tasks = data.tasks.filter(t => t.id !== id);
+        renderAll(); debouncedPersist();
+      });
+    });
+  }
+
+  const SELF_FIELDS = [
+    {key:'pr', idx:'壱', label:'自己PR', hint:'あなたの強みを、根拠となるエピソードとともに簡潔に。'},
+    {key:'gakuchika', idx:'弐', label:'ガクチカ（学生時代に力を入れたこと）', hint:'状況・課題・行動・結果の流れで書くと伝わりやすい。'},
+    {key:'strengths', idx:'参', label:'強み・得意なこと', hint:'複数のエピソードで裏付けできる強みを書き出す。'},
+    {key:'weaknesses', idx:'四', label:'弱み・課題と向き合い方', hint:'弱みだけでなく、改善のための行動もセットで。'},
+    {key:'motivation', idx:'伍', label:'志望動機の型・メモ', hint:'企業ごとに使い回せる軸となる考えをここに整理。'}
+  ];
+
+  function renderSelf(){
+    const grid = document.getElementById('st-self-grid');
+    grid.innerHTML = SELF_FIELDS.map(f => `
+      <div class="st-self-block">
+        <div class="st-self-label"><span class="st-idx">${f.idx}</span>${f.label}</div>
+        <div class="st-self-hint">${f.hint}</div>
+        <textarea class="st-self-textarea" data-key="${f.key}" placeholder="ここに書き始めてください…">${escapeHtml(data.self[f.key]||'')}</textarea>
+        <div class="st-save-indicator" data-indicator="${f.key}">保存しました</div>
+      </div>
+    `).join('');
+
+    $all('.st-self-textarea', grid).forEach(ta => {
+      ta.addEventListener('input', () => {
+        const key = ta.getAttribute('data-key');
+        data.self[key] = ta.value;
+        debouncedPersist();
+        const ind = $(`[data-indicator="${key}"]`, grid);
+        ind.classList.add('show');
+        clearTimeout(ta._indTimer);
+        ta._indTimer = setTimeout(() => ind.classList.remove('show'), 1200);
+      });
+    });
+  }
+
+  function renderTaskCompanyOptions(){
+    const sel = document.getElementById('tf-company');
+    sel.innerHTML = '<option value="">なし</option>' +
+      data.companies.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+  }
+
+  function renderAll(){
+    renderStats();
+    renderBoard();
+    renderTasks();
+    renderSelf();
+    renderCalendar();
+    renderFitTable();
+  }
+
+  function renderFitTable(){
+    const box = document.getElementById('st-fit-table');
+    if(!box) return;
+    const fitOrder = {A:0, B:1, C:2, '':3};
+    const list = data.companies
+      .filter(c => c.status !== 'reject')
+      .slice()
+      .sort((a,b) => (fitOrder[a.fit||''] - fitOrder[b.fit||'']) || a.name.localeCompare(b.name,'ja'));
+    if(list.length === 0){
+      box.innerHTML = `<div class="st-fit-empty">企業を登録すると、ここに求める人物像と適合度がまとまります。</div>`;
+      return;
+    }
+    box.innerHTML = list.map(c => {
+      const fit = c.fit || '';
+      const gradeClass = fit ? 'fit-' + fit.toLowerCase() : 'fit-none';
+      const gradeLabel = fit || '未評価';
+      return `<div class="st-fit-row" data-id="${c.id}">
+        <div class="st-fit-grade ${gradeClass}">${gradeLabel}</div>
+        <div>
+          <div class="st-fit-name">${escapeHtml(c.name)}</div>
+          <div class="st-fit-name-sub">${KIND_LABEL[c.kind||'honsen']}${c.industry ? ' ・ ' + escapeHtml(c.industry) : ''}</div>
+        </div>
+        ${c.ideal ? `<div class="st-fit-ideal">${escapeHtml(c.ideal)}</div>` : `<div class="st-fit-ideal-empty">求める人物像は未入力です</div>`}
+      </div>`;
+    }).join('');
+    $all('.st-fit-row', box).forEach(row => {
+      row.addEventListener('click', () => openCompanyModal(row.getAttribute('data-id')));
+      row.style.cursor = 'pointer';
+    });
+  }
+
+  // ---- Calendar ----
+  let calViewDate = new Date();
+  calViewDate.setDate(1);
+  let calSelectedDate = null;
+  const DOW = ['日','月','火','水','木','金','土'];
+
+  function toDateKey(y,m,d){
+    return y + '-' + String(m+1).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+  }
+
+  function getEventsForDate(dateKey){
+    const events = [];
+    data.companies.forEach(c => {
+      if(c.deadline === dateKey){
+        const stageName = stagesFor(c.kind || 'honsen')[c.stage] || '';
+        const kindTag = c.kind === 'intern' ? '［インターン］' : '';
+        events.push({type:'company', label:kindTag + c.name + '（' + stageName + '）', id:c.id});
+      }
+    });
+    data.tasks.forEach(t => {
+      if(t.deadline === dateKey){
+        events.push({type:'task', label:t.title, id:t.id, done:t.done});
+      }
+    });
+    return events;
+  }
+
+  function renderCalendar(){
+    const grid = document.getElementById('st-cal-grid');
+    if(!grid) return;
+    const y = calViewDate.getFullYear();
+    const m = calViewDate.getMonth();
+    document.getElementById('st-cal-month-label').textContent = y + '年 ' + (m+1) + '月';
+
+    const firstDow = new Date(y, m, 1).getDay();
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    const daysInPrevMonth = new Date(y, m, 0).getDate();
+    const todayKey = toDateKey(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
+    let cells = '';
+    DOW.forEach((d,i) => {
+      cells += `<div class="st-cal-dow ${i===0?'sun':''}${i===6?'sat':''}">${d}</div>`;
+    });
+
+    const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+    for(let i = 0; i < totalCells; i++){
+      const dayNum = i - firstDow + 1;
+      let cellY = y, cellM = m, cellD, otherMonth = false;
+      if(dayNum < 1){
+        cellM = m - 1; cellY = m === 0 ? y-1 : y;
+        cellD = daysInPrevMonth + dayNum; otherMonth = true;
+      } else if(dayNum > daysInMonth){
+        cellM = m + 1; cellY = m === 11 ? y+1 : y;
+        cellD = dayNum - daysInMonth; otherMonth = true;
+      } else {
+        cellD = dayNum;
+      }
+      const normM = ((cellM % 12) + 12) % 12;
+      const dateKey = toDateKey(cellY, normM, cellD);
+      const events = otherMonth ? [] : getEventsForDate(dateKey);
+      const isToday = dateKey === todayKey;
+      const isSelected = dateKey === calSelectedDate;
+      let dots = '';
+      const hasCompany = events.some(e => e.type === 'company');
+      const hasTask = events.some(e => e.type === 'task');
+      if(hasCompany) dots += '<span class="st-cal-dot company"></span>';
+      if(hasTask) dots += '<span class="st-cal-dot task"></span>';
+      cells += `<div class="st-cal-cell ${otherMonth?'other-month':''} ${isToday?'today':''} ${isSelected?'selected':''}" data-date="${dateKey}">
+        <div class="st-cal-daynum">${cellD}</div>
+        <div class="st-cal-dots">${dots}</div>
+      </div>`;
+    }
+    grid.innerHTML = cells;
+
+    $all('.st-cal-cell', grid).forEach(cell => {
+      cell.addEventListener('click', () => {
+        calSelectedDate = cell.getAttribute('data-date');
+        renderCalendar();
+      });
+    });
+
+    renderCalDayDetail();
+  }
+
+  function renderCalDayDetail(){
+    const box = document.getElementById('st-cal-day-detail');
+    if(!box) return;
+    if(!calSelectedDate){
+      box.innerHTML = `<div class="st-cal-day-detail-empty">日付をクリックすると、その日の締切・予定が表示されます。</div>`;
+      return;
+    }
+    const events = getEventsForDate(calSelectedDate);
+    let html = `<div class="st-cal-day-detail-title">${calSelectedDate.replace(/-/g,'/')} の予定</div>`;
+    if(events.length === 0){
+      html += `<div class="st-cal-day-detail-empty">この日の予定はありません。</div>`;
+    } else {
+      html += events.map(e => `<div class="st-cal-detail-row">
+        <span class="st-cal-dot ${e.type}"></span>
+        <span>${e.type === 'company' ? '【企業】' : '【タスク】'}${escapeHtml(e.label)}${e.done ? '（完了）' : ''}</span>
+      </div>`).join('');
+    }
+    box.innerHTML = html;
+  }
+
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+
+  // Tabs
+  $all('.st-tab', root).forEach(tab => {
+    tab.addEventListener('click', () => {
+      $all('.st-tab', root).forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const key = tab.getAttribute('data-tab');
+      $all('.st-panel').forEach(p => p.classList.remove('active'));
+      document.getElementById('panel-' + key).classList.add('active');
+    });
+  });
+
+  $all('#st-kind-switch .st-kind-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      boardKind = chip.getAttribute('data-kind');
+      $all('#st-kind-switch .st-kind-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      renderBoard();
+    });
+  });
+
+  // Company modal
+  const companyOverlay = document.getElementById('st-company-overlay');
+  let cfStage = 0, cfStatus = 'inprogress', cfKind = 'honsen', cfFit = '';
+
+  function buildKindChips(){
+    const row = document.getElementById('cf-kind-row');
+    $all('.st-stage-chip', row).forEach(chip => {
+      chip.addEventListener('click', () => {
+        cfKind = chip.getAttribute('data-kind');
+        cfStage = 0;
+        refreshKindChips();
+        buildStageChips();
+        refreshStageChips();
+      });
+    });
+  }
+  function refreshKindChips(){
+    $all('#cf-kind-row .st-stage-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.getAttribute('data-kind') === cfKind);
+    });
+  }
+  buildKindChips();
+
+  function buildStageChips(){
+    const row = document.getElementById('cf-stage-row');
+    const stages = stagesFor(cfKind);
+    row.innerHTML = stages.map((s,i) => `<div class="st-stage-chip" data-stage="${i}">${s}</div>`).join('');
+    $all('.st-stage-chip', row).forEach(chip => {
+      chip.addEventListener('click', () => {
+        cfStage = parseInt(chip.getAttribute('data-stage'), 10);
+        refreshStageChips();
+      });
+    });
+  }
+  function refreshStageChips(){
+    $all('#cf-stage-row .st-stage-chip').forEach(chip => {
+      chip.classList.toggle('active', parseInt(chip.getAttribute('data-stage'),10) === cfStage);
+    });
+  }
+  buildStageChips();
+
+  $all('.st-status-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      cfStatus = chip.getAttribute('data-status');
+      refreshStatusChips();
+    });
+  });
+  function refreshStatusChips(){
+    $all('.st-status-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.getAttribute('data-status') === cfStatus);
+    });
+  }
+
+  $all('.st-fit-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      cfFit = chip.getAttribute('data-fit');
+      refreshFitChips();
+    });
+  });
+  function refreshFitChips(){
+    $all('.st-fit-chip').forEach(chip => {
+      chip.classList.toggle('active', chip.getAttribute('data-fit') === cfFit);
+    });
+  }
+
+  function openCompanyModal(id){
+    editingCompanyId = id || null;
+    const c = id ? data.companies.find(c => c.id === id) : null;
+    document.getElementById('st-company-modal-title').textContent = c ? '企業を編集' : '企業を追加';
+    document.getElementById('cf-name').value = c ? c.name : '';
+    document.getElementById('cf-industry').value = c ? c.industry || '' : '';
+    document.getElementById('cf-deadline').value = c ? c.deadline || '' : '';
+    document.getElementById('cf-memo').value = c ? c.memo || '' : '';
+    document.getElementById('cf-ideal').value = c ? c.ideal || '' : '';
+    cfKind = c ? (c.kind || 'honsen') : boardKind;
+    refreshKindChips();
+    buildStageChips();
+    cfStage = c ? c.stage : 0;
+    cfStatus = c ? c.status : 'inprogress';
+    cfFit = c ? (c.fit || '') : '';
+    refreshStageChips();
+    refreshStatusChips();
+    refreshFitChips();
+    document.getElementById('cf-delete').style.display = c ? 'inline-block' : 'none';
+    companyOverlay.classList.add('open');
+  }
+  function closeCompanyModal(){
+    companyOverlay.classList.remove('open');
+    editingCompanyId = null;
+  }
+  document.getElementById('st-add-company').addEventListener('click', () => openCompanyModal(null));
+  document.getElementById('cf-cancel').addEventListener('click', closeCompanyModal);
+  companyOverlay.addEventListener('click', e => { if(e.target === companyOverlay) closeCompanyModal(); });
+
+  document.getElementById('cf-save').addEventListener('click', () => {
+    const name = document.getElementById('cf-name').value.trim();
+    if(!name){ alert('企業名を入力してください'); return; }
+    const payload = {
+      name,
+      kind: cfKind,
+      industry: document.getElementById('cf-industry').value.trim(),
+      deadline: document.getElementById('cf-deadline').value,
+      memo: document.getElementById('cf-memo').value.trim(),
+      ideal: document.getElementById('cf-ideal').value.trim(),
+      fit: cfFit,
+      stage: cfStage,
+      status: cfStatus
+    };
+    if(editingCompanyId){
+      const c = data.companies.find(c => c.id === editingCompanyId);
+      Object.assign(c, payload);
+    } else {
+      data.companies.push(Object.assign({id: uid()}, payload));
+    }
+    closeCompanyModal();
+    renderAll(); debouncedPersist();
+  });
+
+  document.getElementById('cf-delete').addEventListener('click', () => {
+    if(!editingCompanyId) return;
+    if(confirm('この企業を削除しますか？関連するタスクの紐付けも解除されます。')){
+      data.companies = data.companies.filter(c => c.id !== editingCompanyId);
+      data.tasks.forEach(t => { if(t.companyId === editingCompanyId) t.companyId = ''; });
+      closeCompanyModal();
+      renderAll(); debouncedPersist();
+    }
+  });
+
+  document.getElementById('st-archive-toggle').addEventListener('click', () => {
+    const list = document.getElementById('st-archive-list');
+    list.style.display = list.style.display === 'none' ? 'flex' : 'none';
+  });
+
+  // Task modal
+  const taskOverlay = document.getElementById('st-task-overlay');
+  document.getElementById('st-add-task').addEventListener('click', () => {
+    document.getElementById('tf-title').value = '';
+    document.getElementById('tf-type').value = 'ES';
+    document.getElementById('tf-deadline').value = '';
+    document.getElementById('tf-memo').value = '';
+    renderTaskCompanyOptions();
+    document.getElementById('tf-company').value = '';
+    taskOverlay.classList.add('open');
+  });
+  document.getElementById('tf-cancel').addEventListener('click', () => taskOverlay.classList.remove('open'));
+  taskOverlay.addEventListener('click', e => { if(e.target === taskOverlay) taskOverlay.classList.remove('open'); });
+  document.getElementById('tf-save').addEventListener('click', () => {
+    const title = document.getElementById('tf-title').value.trim();
+    if(!title){ alert('タスク内容を入力してください'); return; }
+    data.tasks.push({
+      id: uid(),
+      title,
+      type: document.getElementById('tf-type').value,
+      companyId: document.getElementById('tf-company').value,
+      deadline: document.getElementById('tf-deadline').value,
+      memo: document.getElementById('tf-memo').value.trim(),
+      done: false
+    });
+    taskOverlay.classList.remove('open');
+    renderAll(); debouncedPersist();
+  });
+
+  document.getElementById('st-cal-prev').addEventListener('click', () => {
+    calViewDate.setMonth(calViewDate.getMonth() - 1);
+    renderCalendar();
+  });
+  document.getElementById('st-cal-next').addEventListener('click', () => {
+    calViewDate.setMonth(calViewDate.getMonth() + 1);
+    renderCalendar();
+  });
+
+  // --- データの書き出し / 読み込み（端末間の手動同期用）---
+  function updateSyncNote(){
+    const note = document.getElementById('st-sync-note');
+    if(!note) return;
+    const t = localStorage.getItem(STORAGE_KEY + '-updated');
+    note.textContent = t ? ('最終更新: ' + new Date(parseInt(t,10)).toLocaleString('ja-JP')) : '';
+  }
+
+  document.getElementById('st-export').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+    a.href = url;
+    a.download = `shukatsu-techo-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('st-import-btn').addEventListener('click', () => {
+    document.getElementById('st-import-file').click();
+  });
+  document.getElementById('st-import-file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const parsed = JSON.parse(reader.result);
+        if(!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.companies)){
+          throw new Error('形式が不正です');
+        }
+        if(confirm('現在のデータを読み込んだファイルの内容で上書きします。よろしいですか？')){
+          data = Object.assign({companies:[],tasks:[],self:{pr:'',strengths:'',weaknesses:'',gakuchika:'',motivation:''}}, parsed);
+          persist();
+          localStorage.setItem(STORAGE_KEY + '-updated', String(Date.now()));
+          renderAll();
+          updateSyncNote();
+          alert('読み込みが完了しました。');
+        }
+      }catch(err){
+        alert('読み込みに失敗しました。正しいバックアップファイルか確認してください。');
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  // =========================================================
+  // 自動同期（Firebase Firestore）
+  // firebase-config.js に自分のプロジェクト情報を入れると有効になります。
+  // 未設定の場合はローカル保存のみで動作します（書き出し/読み込みは引き続き使えます）。
+  // =========================================================
+  const SYNC_CODE_KEY = 'shukatsu-sync-code';
+  let syncCode = localStorage.getItem(SYNC_CODE_KEY) || '';
+  let fbDb = null;
+  let fbUnsub = null;
+  let applyingRemote = false; // remoteからの反映中はpushToCloudを走らせないためのフラグ
+  const firebaseReady = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey &&
+    window.FIREBASE_CONFIG.apiKey.indexOf('YOUR_') !== 0);
+
+  function genCode(){
+    return Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function setSyncStatus(state, text){
+    const dot = document.getElementById('st-sync-dot');
+    const label = document.getElementById('st-sync-status');
+    if(!dot || !label) return;
+    dot.classList.remove('on','error');
+    if(state === 'on') dot.classList.add('on');
+    if(state === 'error') dot.classList.add('error');
+    label.textContent = text;
+  }
+
+  function initFirebase(){
+    if(!firebaseReady){
+      setSyncStatus('off', '同期未設定（未接続）');
+      return;
+    }
+    try{
+      if(!firebase.apps.length){
+        firebase.initializeApp(window.FIREBASE_CONFIG);
+      }
+      fbDb = firebase.firestore();
+      firebase.auth().signInAnonymously().catch(err => {
+        console.error('auth error', err);
+        setSyncStatus('error', '同期エラー（認証に失敗）');
+      });
+      firebase.auth().onAuthStateChanged(user => {
+        if(user && syncCode){
+          attachSyncListener();
+        } else if(user){
+          setSyncStatus('off', '同期未設定（コード未接続）');
+        }
+      });
+    }catch(e){
+      console.error('firebase init error', e);
+      setSyncStatus('error', '同期エラー（初期化失敗）');
+    }
+  }
+
+  function docRef(){
+    return fbDb.collection('shukatsuTecho').doc(syncCode);
+  }
+
+  function attachSyncListener(){
+    if(!fbDb || !syncCode) return;
+    if(fbUnsub) fbUnsub();
+    setSyncStatus('on', '同期中… (コード: ' + syncCode + ')');
+    fbUnsub = docRef().onSnapshot(snap => {
+      if(!snap.exists) return;
+      const remote = snap.data();
+      if(!remote || !remote.payload) return;
+      // 自分自身が書き込んだ変更はスキップ（無限ループ防止）
+      if(remote.lastWriter === deviceId) return;
+      try{
+        const parsed = JSON.parse(remote.payload);
+        applyingRemote = true;
+        data = Object.assign({companies:[],tasks:[],self:{pr:'',strengths:'',weaknesses:'',gakuchika:'',motivation:''}}, parsed);
+        localStorage.setItem(STORAGE_KEY, remote.payload);
+        renderAll();
+        updateSyncNote();
+        applyingRemote = false;
+      }catch(e){
+        console.error('remote data parse error', e);
+      }
+      setSyncStatus('on', '同期中… (コード: ' + syncCode + ')');
+    }, err => {
+      console.error('sync listen error', err);
+      setSyncStatus('error', '同期エラー（接続を確認してください）');
+    });
+  }
+
+  const deviceId = 'dev-' + Math.random().toString(36).slice(2,10);
+
+  function pushToCloud(){
+    if(!firebaseReady || !fbDb || !syncCode || applyingRemote) return;
+    docRef().set({
+      payload: JSON.stringify(data),
+      lastWriter: deviceId,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(err => {
+      console.error('push error', err);
+      setSyncStatus('error', '同期エラー（保存できませんでした）');
+    });
+  }
+
+  function connectWithCode(code){
+    syncCode = code.trim();
+    if(!syncCode) return;
+    localStorage.setItem(SYNC_CODE_KEY, syncCode);
+    document.getElementById('st-sync-code-current').textContent = syncCode;
+    if(fbDb){
+      attachSyncListener();
+      // 接続直後、リモートにまだ何もなければ今のデータを送る
+      docRef().get().then(snap => {
+        if(!snap.exists){ pushToCloud(); }
+      });
+    }
+  }
+
+  // --- 同期設定モーダルのUI ---
+  const syncOverlay = document.getElementById('st-sync-overlay');
+  function openSyncModal(){
+    document.getElementById('st-sync-code-current').textContent = syncCode || '未設定';
+    document.getElementById('st-sync-code-input').value = '';
+    document.getElementById('st-sync-warn').textContent = firebaseReady ? '' :
+      'firebase-config.js が未設定のため、自動同期は使えません（README.mdを参照してください）。';
+    syncOverlay.classList.add('open');
+  }
+  document.getElementById('st-sync-setup-btn').addEventListener('click', openSyncModal);
+  document.getElementById('st-sync-close').addEventListener('click', () => syncOverlay.classList.remove('open'));
+  syncOverlay.addEventListener('click', e => { if(e.target === syncOverlay) syncOverlay.classList.remove('open'); });
+
+  document.getElementById('st-sync-generate').addEventListener('click', () => {
+    if(!firebaseReady){ alert('firebase-config.js が未設定です。README.mdの手順を先に行ってください。'); return; }
+    const code = genCode();
+    connectWithCode(code);
+    alert('同期コードを作成しました。もう1台の端末で「自動同期を設定」→コード入力欄にこのコードを入力してください。\n\nコード: ' + code);
+  });
+
+  document.getElementById('st-sync-copy').addEventListener('click', () => {
+    if(!syncCode) return;
+    navigator.clipboard && navigator.clipboard.writeText(syncCode);
+  });
+
+  document.getElementById('st-sync-join-btn').addEventListener('click', () => {
+    if(!firebaseReady){ alert('firebase-config.js が未設定です。README.mdの手順を先に行ってください。'); return; }
+    const val = document.getElementById('st-sync-code-input').value.trim();
+    if(!val){ alert('コードを入力してください'); return; }
+    if(confirm('このコードに接続すると、この端末のデータは接続先の内容に置き換わる場合があります。よろしいですか？')){
+      connectWithCode(val);
+      syncOverlay.classList.remove('open');
+    }
+  });
+
+  document.getElementById('st-sync-disconnect').addEventListener('click', () => {
+    if(!confirm('この端末の自動同期を解除しますか？（データはこの端末に残ります）')) return;
+    if(fbUnsub) fbUnsub();
+    syncCode = '';
+    localStorage.removeItem(SYNC_CODE_KEY);
+    setSyncStatus('off', '同期未設定');
+    document.getElementById('st-sync-code-current').textContent = '未設定';
+  });
+
+  initFirebase();
+  if(syncCode){ document.getElementById('st-sync-code-current').textContent = syncCode; }
+
+  loadData();
+})();
+</script>
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js').catch(err => {
+      console.log('Service worker registration failed:', err);
+    });
+  });
+}
+</script>
+</body>
+</html>
