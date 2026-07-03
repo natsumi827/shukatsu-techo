@@ -20,11 +20,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700;900&family=Zen+Old+Mincho:wght@600&display=swap" rel="stylesheet">
 
-<!-- 自動同期（Firebase）。設定手順は README.md 参照 -->
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script src="firebase-config.js"></script>
+<!-- 自動同期（Supabase）。設定手順は README.md 参照 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="supabase-config.js"></script>
 <style>
   :root{
     --paper:#F7F6F0;
@@ -1281,17 +1279,18 @@
   });
 
   // =========================================================
-  // 自動同期（Firebase Firestore）
-  // firebase-config.js に自分のプロジェクト情報を入れると有効になります。
+  // 自動同期（Supabase）
+  // supabase-config.js に自分のプロジェクト情報を入れると有効になります。
   // 未設定の場合はローカル保存のみで動作します（書き出し/読み込みは引き続き使えます）。
   // =========================================================
   const SYNC_CODE_KEY = 'shukatsu-sync-code';
   let syncCode = localStorage.getItem(SYNC_CODE_KEY) || '';
-  let fbDb = null;
-  let fbUnsub = null;
+  let sbClient = null;
+  let sbChannel = null;
   let applyingRemote = false; // remoteからの反映中はpushToCloudを走らせないためのフラグ
-  const firebaseReady = !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey &&
-    window.FIREBASE_CONFIG.apiKey.indexOf('YOUR_') !== 0);
+  const supabaseReady = !!(window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url &&
+    window.SUPABASE_CONFIG.url.indexOf('YOUR_') !== 0 && window.SUPABASE_CONFIG.anonKey &&
+    window.SUPABASE_CONFIG.anonKey.indexOf('YOUR_') !== 0);
 
   function genCode(){
     return Math.random().toString(36).slice(2, 8) + Math.random().toString(36).slice(2, 6);
@@ -1307,76 +1306,85 @@
     label.textContent = text;
   }
 
-  function initFirebase(){
-    if(!firebaseReady){
+  function initSupabase(){
+    if(!supabaseReady){
       setSyncStatus('off', '同期未設定（未接続）');
       return;
     }
     try{
-      if(!firebase.apps.length){
-        firebase.initializeApp(window.FIREBASE_CONFIG);
+      sbClient = supabase.createClient(window.SUPABASE_CONFIG.url, window.SUPABASE_CONFIG.anonKey);
+      if(syncCode){
+        attachSyncListener();
+        pullFromCloud();
+      } else {
+        setSyncStatus('off', '同期未設定（コード未接続）');
       }
-      fbDb = firebase.firestore();
-      firebase.auth().signInAnonymously().catch(err => {
-        console.error('auth error', err);
-        setSyncStatus('error', '同期エラー（認証に失敗）');
-      });
-      firebase.auth().onAuthStateChanged(user => {
-        if(user && syncCode){
-          attachSyncListener();
-        } else if(user){
-          setSyncStatus('off', '同期未設定（コード未接続）');
-        }
-      });
     }catch(e){
-      console.error('firebase init error', e);
+      console.error('supabase init error', e);
       setSyncStatus('error', '同期エラー（初期化失敗）');
     }
   }
 
-  function docRef(){
-    return fbDb.collection('shukatsuTecho').doc(syncCode);
+  function pullFromCloud(){
+    if(!sbClient || !syncCode) return;
+    sbClient.from('shukatsu_techo').select('payload').eq('code', syncCode).maybeSingle()
+      .then(({data: row, error}) => {
+        if(error){ console.error('pull error', error); return; }
+        if(row && row.payload){ applyRemotePayload(row.payload); }
+      });
+  }
+
+  function applyRemotePayload(payload){
+    try{
+      const parsed = typeof payload === 'string' ? JSON.parse(payload) : payload;
+      applyingRemote = true;
+      data = Object.assign({companies:[],tasks:[],self:{pr:'',strengths:'',weaknesses:'',gakuchika:'',motivation:''}}, parsed);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      renderAll();
+      updateSyncNote();
+      applyingRemote = false;
+    }catch(e){
+      console.error('remote data parse error', e);
+    }
   }
 
   function attachSyncListener(){
-    if(!fbDb || !syncCode) return;
-    if(fbUnsub) fbUnsub();
+    if(!sbClient || !syncCode) return;
+    if(sbChannel){ sbClient.removeChannel(sbChannel); }
     setSyncStatus('on', '同期中… (コード: ' + syncCode + ')');
-    fbUnsub = docRef().onSnapshot(snap => {
-      if(!snap.exists) return;
-      const remote = snap.data();
-      if(!remote || !remote.payload) return;
-      // 自分自身が書き込んだ変更はスキップ（無限ループ防止）
-      if(remote.lastWriter === deviceId) return;
-      try{
-        const parsed = JSON.parse(remote.payload);
-        applyingRemote = true;
-        data = Object.assign({companies:[],tasks:[],self:{pr:'',strengths:'',weaknesses:'',gakuchika:'',motivation:''}}, parsed);
-        localStorage.setItem(STORAGE_KEY, remote.payload);
-        renderAll();
-        updateSyncNote();
-        applyingRemote = false;
-      }catch(e){
-        console.error('remote data parse error', e);
-      }
-      setSyncStatus('on', '同期中… (コード: ' + syncCode + ')');
-    }, err => {
-      console.error('sync listen error', err);
-      setSyncStatus('error', '同期エラー（接続を確認してください）');
-    });
+    sbChannel = sbClient
+      .channel('sync-' + syncCode)
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'shukatsu_techo', filter: 'code=eq.' + syncCode },
+        (payload) => {
+          const row = payload.new;
+          if(!row || !row.payload) return;
+          if(row.last_writer === deviceId) return; // 自分の書き込みはスキップ（無限ループ防止）
+          applyRemotePayload(row.payload);
+          setSyncStatus('on', '同期中… (コード: ' + syncCode + ')');
+        }
+      )
+      .subscribe((status) => {
+        if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+          setSyncStatus('error', '同期エラー（接続を確認してください）');
+        }
+      });
   }
 
   const deviceId = 'dev-' + Math.random().toString(36).slice(2,10);
 
   function pushToCloud(){
-    if(!firebaseReady || !fbDb || !syncCode || applyingRemote) return;
-    docRef().set({
-      payload: JSON.stringify(data),
-      lastWriter: deviceId,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }).catch(err => {
-      console.error('push error', err);
-      setSyncStatus('error', '同期エラー（保存できませんでした）');
+    if(!supabaseReady || !sbClient || !syncCode || applyingRemote) return;
+    sbClient.from('shukatsu_techo').upsert({
+      code: syncCode,
+      payload: data,
+      last_writer: deviceId,
+      updated_at: new Date().toISOString()
+    }).then(({error}) => {
+      if(error){
+        console.error('push error', error);
+        setSyncStatus('error', '同期エラー（保存できませんでした）');
+      }
     });
   }
 
@@ -1385,12 +1393,13 @@
     if(!syncCode) return;
     localStorage.setItem(SYNC_CODE_KEY, syncCode);
     document.getElementById('st-sync-code-current').textContent = syncCode;
-    if(fbDb){
+    if(sbClient){
       attachSyncListener();
       // 接続直後、リモートにまだ何もなければ今のデータを送る
-      docRef().get().then(snap => {
-        if(!snap.exists){ pushToCloud(); }
-      });
+      sbClient.from('shukatsu_techo').select('code').eq('code', syncCode).maybeSingle()
+        .then(({data: row}) => {
+          if(!row){ pushToCloud(); } else { pullFromCloud(); }
+        });
     }
   }
 
@@ -1399,8 +1408,8 @@
   function openSyncModal(){
     document.getElementById('st-sync-code-current').textContent = syncCode || '未設定';
     document.getElementById('st-sync-code-input').value = '';
-    document.getElementById('st-sync-warn').textContent = firebaseReady ? '' :
-      'firebase-config.js が未設定のため、自動同期は使えません（README.mdを参照してください）。';
+    document.getElementById('st-sync-warn').textContent = supabaseReady ? '' :
+      'supabase-config.js が未設定のため、自動同期は使えません（README.mdを参照してください）。';
     syncOverlay.classList.add('open');
   }
   document.getElementById('st-sync-setup-btn').addEventListener('click', openSyncModal);
@@ -1408,7 +1417,7 @@
   syncOverlay.addEventListener('click', e => { if(e.target === syncOverlay) syncOverlay.classList.remove('open'); });
 
   document.getElementById('st-sync-generate').addEventListener('click', () => {
-    if(!firebaseReady){ alert('firebase-config.js が未設定です。README.mdの手順を先に行ってください。'); return; }
+    if(!supabaseReady){ alert('supabase-config.js が未設定です。README.mdの手順を先に行ってください。'); return; }
     const code = genCode();
     connectWithCode(code);
     alert('同期コードを作成しました。もう1台の端末で「自動同期を設定」→コード入力欄にこのコードを入力してください。\n\nコード: ' + code);
@@ -1420,7 +1429,7 @@
   });
 
   document.getElementById('st-sync-join-btn').addEventListener('click', () => {
-    if(!firebaseReady){ alert('firebase-config.js が未設定です。README.mdの手順を先に行ってください。'); return; }
+    if(!supabaseReady){ alert('supabase-config.js が未設定です。README.mdの手順を先に行ってください。'); return; }
     const val = document.getElementById('st-sync-code-input').value.trim();
     if(!val){ alert('コードを入力してください'); return; }
     if(confirm('このコードに接続すると、この端末のデータは接続先の内容に置き換わる場合があります。よろしいですか？')){
@@ -1431,14 +1440,14 @@
 
   document.getElementById('st-sync-disconnect').addEventListener('click', () => {
     if(!confirm('この端末の自動同期を解除しますか？（データはこの端末に残ります）')) return;
-    if(fbUnsub) fbUnsub();
+    if(sbChannel && sbClient){ sbClient.removeChannel(sbChannel); }
     syncCode = '';
     localStorage.removeItem(SYNC_CODE_KEY);
     setSyncStatus('off', '同期未設定');
     document.getElementById('st-sync-code-current').textContent = '未設定';
   });
 
-  initFirebase();
+  initSupabase();
   if(syncCode){ document.getElementById('st-sync-code-current').textContent = syncCode; }
 
   loadData();

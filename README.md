@@ -62,36 +62,50 @@ shukatsu-techo-app/
 
 を使って、手動でスマホ⇄パソコン間を移せます（AirDrop、メール、Google Driveなど）。
 
-### 自動で同期する（Firebase・無料）
-「🔗 自動同期を設定」ボタンから、無料の **Firebase Firestore** を使ってリアルタイム自動同期ができます。
-初回だけ次のセットアップが必要です（すべて無料の範囲で使えます）。
+### 自動で同期する（Supabase・無料／クレジットカード不要）
+「🔗 自動同期を設定」ボタンから、無料の **Supabase** を使ってリアルタイム自動同期ができます。
+Supabaseは無料プランでもクレジットカードの登録が不要です。
+初回だけ次のセットアップが必要です。
 
-1. https://console.firebase.google.com/ にアクセスし、Googleアカウントでログイン
-2. 「プロジェクトを作成」→ 好きな名前（例：shukatsu-techo）を入力して作成
-   （Googleアナリティクスは無効でOK）
-3. 左メニュー「構築」→「Firestore Database」→「データベースの作成」
-   → ロケーションは `asia-northeast1`（東京）などお好みで → 「**本番環境モード**」を選択して作成
-4. 作成後、「ルール」タブを開き、以下の内容に置き換えて「公開」：
+1. https://supabase.com/ にアクセスし、「Start your project」→ **GitHubアカウントでログイン**
+   （クレジットカードの入力画面は出てきません）
+2. 「New project」をクリックし、以下を入力してプロジェクトを作成
+   - Name：好きな名前（例：shukatsu-techo）
+   - Database Password：自動生成された、もしくは自分で決めたパスワード
+     （後で使うことはほぼありませんが、念のためどこかにメモしておくと安心です）
+   - Region：`Northeast Asia (Tokyo)` がおすすめ
+   - 「Create new project」をクリック（1〜2分ほど準備にかかります）
+3. 左メニューの **「SQL Editor」** を開き、「New query」→ 以下のSQLをそのまま貼り付けて
+   右下の **「Run」** をクリック（同期用のテーブルと、コードを知っている人だけが
+   読み書きできるようにするルールが一度に作られます）：
 
+   ```sql
+   create table if not exists shukatsu_techo (
+     code text primary key,
+     payload jsonb not null,
+     last_writer text,
+     updated_at timestamptz default now()
+   );
+
+   alter table shukatsu_techo enable row level security;
+
+   create policy "allow all with code"
+     on shukatsu_techo
+     for all
+     using (true)
+     with check (true);
+
+   alter publication supabase_realtime add table shukatsu_techo;
    ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-       match /shukatsuTecho/{code} {
-         allow read, write: if request.auth != null;
-       }
-     }
-   }
-   ```
 
-5. 左メニュー「構築」→「Authentication」→「Sign-in method」で
-   **「匿名」プロバイダを有効化**（本人確認なしでアプリが安全に接続するために使います）
-6. 左メニュー歯車アイコン→「プロジェクトの設定」→ 下の方の「マイアプリ」→
-   `</>`（ウェブ）アイコンでアプリを追加（アプリ名は何でもOK、Hostingは不要）
-7. 表示された `firebaseConfig` の中身（apiKey, authDomain, projectId など）を、
-   このフォルダの **`firebase-config.js`** にコピーして保存
-   （`YOUR_API_KEY` などの部分を実際の値に書き換えてください）
-8. 更新した `firebase-config.js` を含め、フォルダ一式を再度サーバーにアップロード
+4. 左メニューの **「Project Settings」**（歯車アイコン）→ **「API」** を開く
+5. 表示される **「Project URL」** と、**「anon public」** というラベルの長いキーをコピー
+6. このフォルダの **`supabase-config.js`** を開き、`YOUR_SUPABASE_PROJECT_URL` と
+   `YOUR_SUPABASE_ANON_KEY` の部分を、コピーした実際の値に書き換えて保存
+7. 更新した `supabase-config.js` を含め、フォルダ一式を再度サーバーにアップロード
+
+> 上記のSQLでは、同期コードさえ知っていれば誰でもそのコードのデータを読み書きできる
+> シンプルなルールにしています。同期コードは他人に共有しないようにしてください。
 
 ### 実際の使い方
 1. 1台目の端末でアプリを開き、「🔗 自動同期を設定」→「新しいコードを作成」
@@ -103,4 +117,14 @@ shukatsu-techo-app/
 
 > 同期コードは他人に知られるとその人もデータを読み書きできてしまうため、
 > 第三者と共有しないでください。
+
+### 料金について
+Supabaseの無料プランには次のような上限がありますが、就活手帳の個人利用であれば
+まず超えることはありません。
+
+- データベース容量：500MBまで（テキストデータ中心のこのアプリなら十分すぎる余裕があります）
+- 上限に達しても自動課金されることはなく、書き込みが一時停止するだけです
+- ただし**7日間まったくアクセスしないとプロジェクトが一時停止**します。
+  再度開けば数十秒で自動的に復帰するので、内容が消えることはありません。
+
 

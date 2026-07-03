@@ -1,9 +1,9 @@
-const CACHE_NAME = 'shukatsu-techo-v1';
+const CACHE_NAME = 'shukatsu-techo-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './firebase-config.js',
+  './supabase-config.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png'
