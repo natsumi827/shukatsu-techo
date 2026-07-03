@@ -201,6 +201,9 @@
   .st-card:hover{border-color:var(--navy-2);}
   .st-card-name{font-weight:700;font-size:13px;color:var(--ink);margin-bottom:2px;}
   .st-card-industry{font-size:11px;color:var(--muted);}
+  .st-card-history{
+    font-size:11px;color:var(--navy-2);margin-top:3px;font-weight:600;
+  }
   .st-card-deadline{
     font-family:monospace;font-size:11px;margin-top:6px;
     display:inline-block;padding:1px 6px;border-radius:2px;
@@ -334,6 +337,31 @@
   .st-fit-chip.active.fit-b{background:#F3EAD2;border-color:var(--gold);color:var(--gold);}
   .st-fit-chip.active.fit-c{background:var(--stamp-soft);border-color:var(--stamp);color:var(--stamp);}
   .st-fit-chip.active.fit-none{background:#EFEDE6;border-color:var(--reject);color:var(--reject);}
+
+  /* interview history */
+  .st-history-list{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
+  .st-history-item{
+    display:flex;align-items:flex-start;gap:10px;background:#F1EFE6;
+    border:1px solid var(--border);border-radius:2px;padding:8px 10px;font-size:12.5px;
+  }
+  .st-history-date{
+    flex-shrink:0;color:var(--muted);font-variant-numeric:tabular-nums;min-width:64px;
+  }
+  .st-history-body{flex:1;}
+  .st-history-label{font-weight:700;color:var(--navy);}
+  .st-history-memo{color:var(--muted);margin-top:2px;line-height:1.5;}
+  .st-history-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;}
+  .st-history-del:hover{color:var(--stamp);}
+  .st-history-empty{color:var(--muted);font-size:12px;margin-bottom:8px;}
+  .st-history-add{
+    display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  }
+  .st-history-add input[type="date"]{
+    border:1px solid var(--border);border-radius:2px;padding:7px 8px;font-size:12.5px;font-family:inherit;flex-shrink:0;
+  }
+  .st-history-add input[type="text"]{
+    border:1px solid var(--border);border-radius:2px;padding:7px 8px;font-size:12.5px;font-family:inherit;flex:1;min-width:110px;
+  }
   .st-card-fit-badge{
     position:absolute;top:6px;left:6px;
     width:26px;height:26px;border-radius:50%;
@@ -605,6 +633,17 @@
       <div class="st-self-hint" style="margin-top:6px;">あくまで自己評価の目安です。求める人物像と自分の学歴・研究内容・経験を照らし合わせて選んでください。</div>
     </div>
     <div class="st-field">
+      <label>選考履歴（面談・面接・結果などをいくつでも追加できます）</label>
+      <div class="st-history-list" id="cf-history-list"></div>
+      <div class="st-history-add">
+        <input type="date" id="cf-history-date">
+        <input type="text" id="cf-history-label" placeholder="例：一次面接・人事面談・内定 など" list="cf-history-suggest">
+        <datalist id="cf-history-suggest"></datalist>
+        <input type="text" id="cf-history-memo" placeholder="メモ（任意）">
+        <button class="st-btn st-btn-ghost st-btn-sm" id="cf-history-add-btn" type="button">＋ 履歴を追加</button>
+      </div>
+    </div>
+    <div class="st-field">
       <label>メモ</label>
       <textarea id="cf-memo" placeholder="面接の感触、次の対策など"></textarea>
     </div>
@@ -667,6 +706,11 @@
   function stagesFor(kind){ return STAGE_SETS[kind] || STAGE_SETS.honsen; }
   // Backward-compat alias used by calendar/task rendering (labels for honsen flow)
   const STAGES = STAGE_SETS.honsen;
+  const HISTORY_LABEL_SUGGESTIONS = [
+    'エントリー','ES提出','Webテスト・適性検査','会社説明会','OB・OG訪問',
+    '人事面談','グループディスカッション','一次面接','二次面接','三次面接','最終面接',
+    'インターン参加','内定','内定承諾','見送り','辞退'
+  ];
   const STORAGE_KEY = 'shukatsu-data-v1';
   let data = { companies: [], tasks: [], self: { pr:'', strengths:'', weaknesses:'', gakuchika:'', motivation:'' } };
   let editingCompanyId = null;
@@ -771,10 +815,13 @@
           const du = daysUntil(c.deadline);
           const soonClass = (du !== null && du <= 5) ? 'soon' : 'normal';
           const fit = c.fit;
+          const hist = Array.isArray(c.history) ? c.history : [];
+          const latestHist = hist.length ? hist.slice().sort((a,b) => (b.date||'').localeCompare(a.date||''))[0] : null;
           html += `<div class="st-card ${c.status==='offer'?'offer':''}" data-id="${c.id}">
             ${fit ? `<div class="st-card-fit-badge fit-${fit.toLowerCase()}">${fit}</div>` : ''}
             <div class="st-card-name" style="${fit?'padding-left:30px;':''}">${escapeHtml(c.name)}</div>
             <div class="st-card-industry" style="${fit?'padding-left:30px;':''}">${escapeHtml(c.industry||'')}</div>
+            ${latestHist ? `<div class="st-card-history">${escapeHtml(latestHist.label)}${hist.length>1?`（他${hist.length-1}件）`:''}</div>` : ''}
             ${c.deadline ? `<div class="st-card-deadline ${soonClass}">${fmtDeadline(c.deadline)}</div>` : ''}
           </div>`;
         });
@@ -1060,6 +1107,7 @@
   // Company modal
   const companyOverlay = document.getElementById('st-company-overlay');
   let cfStage = 0, cfStatus = 'inprogress', cfKind = 'honsen', cfFit = '';
+  let cfHistory = [];
 
   function buildKindChips(){
     const row = document.getElementById('cf-kind-row');
@@ -1122,6 +1170,61 @@
     });
   }
 
+  document.getElementById('cf-history-suggest').innerHTML =
+    HISTORY_LABEL_SUGGESTIONS.map(s => `<option value="${escapeHtml(s)}">`).join('');
+
+  function fmtHistoryDate(dateStr){
+    if(!dateStr) return '日付未定';
+    const d = new Date(dateStr + 'T00:00:00');
+    if(isNaN(d.getTime())) return dateStr;
+    return (d.getMonth()+1) + '/' + d.getDate();
+  }
+
+  function renderHistoryList(){
+    const box = document.getElementById('cf-history-list');
+    if(cfHistory.length === 0){
+      box.innerHTML = `<div class="st-history-empty">まだ履歴がありません。面談・面接・結果などを記録できます。</div>`;
+      return;
+    }
+    const sorted = cfHistory.slice().sort((a,b) => (a.date||'9999').localeCompare(b.date||'9999'));
+    box.innerHTML = sorted.map(h => `
+      <div class="st-history-item" data-id="${h.id}">
+        <div class="st-history-date">${fmtHistoryDate(h.date)}</div>
+        <div class="st-history-body">
+          <div class="st-history-label">${escapeHtml(h.label || '（種別未入力）')}</div>
+          ${h.memo ? `<div class="st-history-memo">${escapeHtml(h.memo)}</div>` : ''}
+        </div>
+        <button class="st-history-del" data-id="${h.id}" type="button" title="削除">✕</button>
+      </div>
+    `).join('');
+    $all('.st-history-del', box).forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        cfHistory = cfHistory.filter(h => h.id !== id);
+        renderHistoryList();
+      });
+    });
+  }
+
+  document.getElementById('cf-history-add-btn').addEventListener('click', () => {
+    const dateEl = document.getElementById('cf-history-date');
+    const labelEl = document.getElementById('cf-history-label');
+    const memoEl = document.getElementById('cf-history-memo');
+    const label = labelEl.value.trim();
+    if(!label){ alert('種別（一次面接・内定 など）を入力してください'); return; }
+    cfHistory.push({
+      id: uid(),
+      date: dateEl.value || '',
+      label,
+      memo: memoEl.value.trim()
+    });
+    dateEl.value = '';
+    labelEl.value = '';
+    memoEl.value = '';
+    renderHistoryList();
+    labelEl.focus();
+  });
+
   function openCompanyModal(id){
     editingCompanyId = id || null;
     const c = id ? data.companies.find(c => c.id === id) : null;
@@ -1141,6 +1244,11 @@
     refreshStatusChips();
     refreshFitChips();
     document.getElementById('cf-delete').style.display = c ? 'inline-block' : 'none';
+    cfHistory = c && Array.isArray(c.history) ? c.history.map(h => Object.assign({}, h)) : [];
+    document.getElementById('cf-history-date').value = '';
+    document.getElementById('cf-history-label').value = '';
+    document.getElementById('cf-history-memo').value = '';
+    renderHistoryList();
     companyOverlay.classList.add('open');
   }
   function closeCompanyModal(){
@@ -1163,7 +1271,8 @@
       ideal: document.getElementById('cf-ideal').value.trim(),
       fit: cfFit,
       stage: cfStage,
-      status: cfStatus
+      status: cfStatus,
+      history: cfHistory.slice()
     };
     if(editingCompanyId){
       const c = data.companies.find(c => c.id === editingCompanyId);
